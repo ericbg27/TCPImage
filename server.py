@@ -5,8 +5,9 @@ from argparse import ArgumentParser
 #import tqdm
 
 HEADER = struct.Struct('!I')
+NAME_HEADER = struct.Struct('!s')
 
-def receive_image_size(sock):
+def receive_size(sock):
     blocks = []
     length = HEADER.size
     while length:
@@ -16,15 +17,17 @@ def receive_image_size(sock):
     
     return b''.join(blocks)
 
-def receive_name(sock):
-    NAME_SIZE = 100
-    name = sock.recv(NAME_SIZE)
+def receive_name(sock, name_size):
+    name = sock.recv(name_size)
 
     return name.decode('ascii')
 
 def receive_image(sock):
-    s = receive_image_size(sock)
-    name = receive_name(sock)
+    ns = receive_size(sock)
+    (name_size,) = HEADER.unpack(ns)
+    name = receive_name(sock, name_size)
+
+    s = receive_size(sock)
     (image_size,) = HEADER.unpack(s)
 
     BUFFER_SIZE = 4096
@@ -72,7 +75,7 @@ if __name__ == "__main__":
                     image_file = open(name, 'wb')
                     image_file.write(image)
                     image_file.close()
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         print('\nClosing Server...')
         sc.close()
         sock.close()

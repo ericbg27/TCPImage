@@ -12,8 +12,12 @@ def send_image(test_image, sock, image_name):
     byte_image = test_image.read()
     image_size = len(byte_image)
 
-    sock.send(HEADER.pack(image_size))
+    name_size = len(image_name)
+
+    sock.send(HEADER.pack(name_size))
     sock.send(image_name.encode('ascii'))
+
+    sock.send(HEADER.pack(image_size))
 
     sent = 0
     remaining = image_size
