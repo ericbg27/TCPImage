@@ -1,11 +1,11 @@
 import socket
 import struct
+import imghdr
 from argparse import ArgumentParser
 
 #import tqdm
 
 HEADER = struct.Struct('!I')
-NAME_HEADER = struct.Struct('!s')
 
 def receive_size(sock):
     blocks = []
@@ -61,20 +61,24 @@ if __name__ == "__main__":
         while True:
             sc, sockname = sock.accept()
             print('Accepted connection from', sockname)
-            sc.shutdown(socket.SHUT_WR)
+            #sc.shutdown(socket.SHUT_WR)
 
             if sc:
                 image, name = receive_image(sc)
-                n = name.split('.')
-                
-                n[0] += '_server'
+                image_type = imghdr.what('', h=image)
+                if image_type:
+                    n = name.split('.')
+                    
+                    n[0] += '_server'
 
-                name = n[0] + '.' + n[1]
+                    name = n[0] + '.' + image_type
 
-                if image:
-                    image_file = open(name, 'wb')
-                    image_file.write(image)
-                    image_file.close()
+                    if image:
+                        image_file = open(name, 'wb')
+                        image_file.write(image)
+                        image_file.close()
+                else:
+                    sc.send('Received file is not an accepted image type'.encode('ascii'))
     except KeyboardInterrupt:
         print('\nClosing Server...')
         sc.close()

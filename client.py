@@ -57,10 +57,18 @@ if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOL_SOCKET)
     server = (args.hostname, args.p)
     sock.connect(server)
-    sock.shutdown(socket.SHUT_RD)
+    #sock.shutdown(socket.SHUT_RD)
 
     size = send_image(test_image, sock, args.image)
 
     print('Image with size {} sent'.format(size))
+
+    sock.settimeout(10)
+
+    try:
+        msg = sock.recv(128)
+        print(msg.decode('ascii'))
+    except socket.timeout as e:
+        print('Image received without errors.')
 
     test_image.close()
