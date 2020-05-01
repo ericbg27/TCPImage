@@ -3,9 +3,26 @@ import struct
 import imghdr
 from argparse import ArgumentParser
 
+import cryptography
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import serialization, hashes
+
 #import tqdm
 
 HEADER = struct.Struct('!I')
+ENCRYPTION_SIZE = 256
+
+def create_keys():
+    KEY_SIZE = 2048
+    pr_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=KEY_SIZE,
+        backend=default_backend()
+    )
+    pb_key = pr_key.public_key()
+
+    return pr_key, pb_key
 
 def receive_size(sock):
     blocks = []
@@ -58,13 +75,60 @@ if __name__ == "__main__":
     print('Listening at', sock.getsockname())
 
     try:
+        with open('private_key.pem', 'rb') as key_file:
+            pr_key = serialization.load_pem_private_key(
+                key_file.read(),
+                password=None,
+                backend=default_backend()
+            )
+
+        with open('public_key.pem', 'rb') as key_file:
+            pb_key = serialization.load_pem_public_key(
+                key_file.read(),
+                backend=default_backend()
+            )
+    except IOError:
+        pr_key, pb_key = create_keys()
+    finally:
+        pem = pr_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        with open('private_key.pem', 'wb') as f:
+            f.write(pem)
+        
+        pem_pb = pb_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        with open('public_key.pem', 'wb') as f:
+            f.write(pem_pb)
+
+    pb_key_size = len(pem_pb)
+
+    try:
         while True:
             sc, sockname = sock.accept()
             print('Accepted connection from', sockname)
+            sc.send(HEADER.pack(pb_key_size))
+            sc.send(pem_pb)
+
             #sc.shutdown(socket.SHUT_WR)
 
             if sc:
-                image, name = receive_image(sc)
+                encrypted_image, name = receive_image(sc)
+
+                image_header = pr_key.decrypt(
+                    encrypted_image[0:256],
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+
+                image = image_header + encrypted_image[256:]
                 image_type = imghdr.what('', h=image)
                 if image_type:
                     n = name.split('.')
