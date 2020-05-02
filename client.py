@@ -45,7 +45,6 @@ def receive_public_key(sock):
     return pb_key
 
 def send_image(byte_image, sock, image_name):
-    #byte_image = image.read()
     image_size = len(byte_image)
 
     name_size = len(image_name)
@@ -95,7 +94,6 @@ if __name__ == "__main__":
     sock.connect(server)
 
     pb_key = receive_public_key(sock)
-    #sock.shutdown(socket.SHUT_RD)
 
     image_header, image_body = get_jpeg_image_header(image.read())
 

@@ -1,6 +1,7 @@
 import socket
 import struct
 import imghdr
+import os
 from argparse import ArgumentParser
 
 from cryptography.hazmat.backends import default_backend
@@ -66,8 +67,17 @@ if __name__ == "__main__":
     help='IP address or hostname (default: %(default)s)')
     parser.add_argument('-p', type=int, metavar='port', default=1060,
     help='TCP port number (default: %(default)s)')
+    parser.add_argument('-file_dir', default='', help='Directory in which to save received files (absolute path)')
 
     args = parser.parse_args()
+
+    if args.file_dir != '':
+        cwd = os.getcwd()
+        try:
+            os.chdir(args.file_dir)
+        except:
+            print("Could not reach specified path, restoring the current path.")
+            os.chdir(cwd)
 
     host = (args.hostname, args.p)
 
@@ -118,8 +128,6 @@ if __name__ == "__main__":
             sc.send(HEADER.pack(pb_key_size))
             sc.send(pem_pb)
 
-            #sc.shutdown(socket.SHUT_WR)
-
             if sc:
                 encrypted_image, name = receive_data(sc)
 
@@ -149,5 +157,9 @@ if __name__ == "__main__":
                     sc.send('Received file is not an accepted image type'.encode('ascii'))
     except KeyboardInterrupt:
         print('\nClosing Server...')
-        sc.close()
         sock.close()
+
+        try:
+            sc.close()
+        except NameError:
+            pass
