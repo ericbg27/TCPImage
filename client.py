@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
 HEADER = struct.Struct('!I')
+NAME_HEADER = struct.Struct('!H')
 
 BUFFER_SIZE = 4096
 
@@ -49,10 +50,10 @@ def send_image(byte_image, sock, image_name):
 
     name_size = len(image_name)
 
-    sock.send(HEADER.pack(name_size))
-    sock.send(image_name.encode('ascii'))
-
+    sock.send(NAME_HEADER.pack(name_size))
     sock.send(HEADER.pack(image_size))
+
+    sock.send(image_name.encode('ascii'))
 
     sent = 0
     remaining = image_size

@@ -3,7 +3,6 @@ import struct
 import imghdr
 from argparse import ArgumentParser
 
-import cryptography
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
@@ -11,6 +10,8 @@ from cryptography.hazmat.primitives import serialization, hashes
 #import tqdm
 
 HEADER = struct.Struct('!I')
+NAME_HEADER = struct.Struct('!H')
+
 ENCRYPTION_SIZE = 256
 
 def create_keys():
@@ -24,9 +25,13 @@ def create_keys():
 
     return pr_key, pb_key
 
-def receive_size(sock):
+def receive_size(sock, short=False):
     blocks = []
-    length = HEADER.size
+    if short:
+        length = NAME_HEADER.size
+    else:
+        length = HEADER.size
+
     while length:
         block = sock.recv(length)
         length -= len(block)
@@ -34,25 +39,24 @@ def receive_size(sock):
     
     return b''.join(blocks)
 
-def receive_name(sock, name_size):
-    name = sock.recv(name_size)
+def receive_data_blocks(sock, length, BUFFER_SIZE=4096):
+    data = b''
+    while length:
+        block = sock.recv(BUFFER_SIZE)
+        length -= len(block)
+        data += block
+    
+    return data
 
-    return name.decode('ascii')
-
-def receive_image(sock):
-    ns = receive_size(sock)
-    (name_size,) = HEADER.unpack(ns)
-    name = receive_name(sock, name_size)
-
+def receive_data(sock):
+    ns = receive_size(sock, short=True)
+    (name_size,) = NAME_HEADER.unpack(ns)
     s = receive_size(sock)
     (image_size,) = HEADER.unpack(s)
 
-    BUFFER_SIZE = 4096
-    image = b''
-    while image_size:
-        block = sock.recv(BUFFER_SIZE)
-        image_size -= len(block)
-        image += block
+    name = receive_data_blocks(sock, name_size)
+    name = name.decode('ascii')
+    image = receive_data_blocks(sock, image_size)
     
     return image, name
 
@@ -117,7 +121,7 @@ if __name__ == "__main__":
             #sc.shutdown(socket.SHUT_WR)
 
             if sc:
-                encrypted_image, name = receive_image(sc)
+                encrypted_image, name = receive_data(sc)
 
                 image_header = pr_key.decrypt(
                     encrypted_image[0:256],
