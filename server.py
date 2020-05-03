@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
-
+from filter_operator import Operator
 #import tqdm
 
 HEADER = struct.Struct('!I')
@@ -52,14 +52,20 @@ def receive_data_blocks(sock, length, BUFFER_SIZE=4096):
 def receive_data(sock):
     ns = receive_size(sock, short=True)
     (name_size,) = NAME_HEADER.unpack(ns)
+    cs = receive_size(sock, short=True)
+    (command_size,) = NAME_HEADER.unpack(cs)
     s = receive_size(sock)
     (image_size,) = HEADER.unpack(s)
 
-    name = receive_data_blocks(sock, name_size)
-    name = name.decode('ascii')
+    header = receive_data_blocks(sock, name_size+command_size)
+    header = header.decode('ascii')
+
+    name = header[0:name_size]
+    command = header[name_size:]
+
     image = receive_data_blocks(sock, image_size)
     
-    return image, name
+    return image, name, command
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Transmit an image over TCP')
@@ -129,7 +135,7 @@ if __name__ == "__main__":
             sc.send(pem_pb)
 
             if sc:
-                encrypted_image, name = receive_data(sc)
+                encrypted_image, name, command = receive_data(sc)
 
                 image_header = pr_key.decrypt(
                     encrypted_image[0:256],
@@ -143,13 +149,19 @@ if __name__ == "__main__":
                 image = image_header + encrypted_image[256:]
                 image_type = imghdr.what('', h=image)
                 if image_type:
-                    n = name.split('.')
-                    
-                    n[0] += '_server'
-
-                    name = n[0] + '.' + image_type
-
                     if image:
+                        n = name.split('.')
+                        if command != 'None':
+                            o = Operator()
+
+                            image = o.operate(command, image)
+
+                            n[0] += '_server_' + command
+                        else:
+                            n[0] += '_server'
+
+                        name = n[0] + '.' + image_type
+
                         image_file = open(name, 'wb')
                         image_file.write(image)
                         image_file.close()

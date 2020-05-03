@@ -44,15 +44,19 @@ def receive_public_key(sock):
 
     return pb_key
 
-def send_image(byte_image, sock, image_name):
+def send_image(byte_image, sock, image_name, image_command):
     image_size = len(byte_image)
 
     name_size = len(image_name)
 
+    command_size = len(image_command)
+
     sock.send(NAME_HEADER.pack(name_size))
+    sock.send(NAME_HEADER.pack(command_size))
     sock.send(HEADER.pack(image_size))
 
-    sock.send(image_name.encode('ascii'))
+    header_str = image_name + image_command
+    sock.send(header_str.encode('ascii'))
 
     sent = 0
     remaining = image_size
@@ -85,6 +89,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', type=int, metavar='port', default=1060,
     help='TCP port number (default: %(default)s)')
     parser.add_argument('image', type=str, help='Image name')
+    parser.add_argument('-command', type=str, default='None', help='Image effect to be applied')
 
     args = parser.parse_args()
     image = open(args.image, 'rb')
@@ -107,7 +112,14 @@ if __name__ == "__main__":
     )
 
     encrypted_image = encrypted_header + image_body
-    size = send_image(encrypted_image, sock, args.image)
+
+    commands = ['gaussian_filter', 'median_filtering', 'averaging', 'laplacian']
+    if args.command not in commands:
+        print("Unknown image command, setting default (No command)")
+        command = 'None'
+    else:
+        command = args.command
+    size = send_image(encrypted_image, sock, args.image, command)
 
     print('Image with size {} sent'.format(size))
 
