@@ -2,7 +2,9 @@ import socket
 import struct
 import imghdr
 import os
+import threading
 from argparse import ArgumentParser
+from _thread import *
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -66,6 +68,42 @@ def receive_data(sock):
     image = receive_data_blocks(sock, image_size)
     
     return image, name, command
+
+def server_thread(sc):
+    if sc:
+        print('Running main thread')
+        encrypted_image, name, command = receive_data(sc)
+
+        image_header = pr_key.decrypt(
+            encrypted_image[0:256],
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+
+        image = image_header + encrypted_image[256:]
+        image_type = imghdr.what('', h=image)
+        if image_type:
+            if image:
+                n = name.split('.')
+                if command != 'None':
+                    o = Operator()
+
+                    image = o.operate(command, image)
+
+                    n[0] += '_server_' + command
+                else:
+                    n[0] += '_server'
+
+                name = n[0] + '.' + image_type
+
+                image_file = open(name, 'wb')
+                image_file.write(image)
+                image_file.close()
+        else:
+            sc.send('Received file is not an accepted image type'.encode('ascii'))
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Transmit an image over TCP')
@@ -134,39 +172,9 @@ if __name__ == "__main__":
             sc.send(HEADER.pack(pb_key_size))
             sc.send(pem_pb)
 
-            if sc:
-                encrypted_image, name, command = receive_data(sc)
+            start_new_thread(server_thread, (sc,))
 
-                image_header = pr_key.decrypt(
-                    encrypted_image[0:256],
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
-
-                image = image_header + encrypted_image[256:]
-                image_type = imghdr.what('', h=image)
-                if image_type:
-                    if image:
-                        n = name.split('.')
-                        if command != 'None':
-                            o = Operator()
-
-                            image = o.operate(command, image)
-
-                            n[0] += '_server_' + command
-                        else:
-                            n[0] += '_server'
-
-                        name = n[0] + '.' + image_type
-
-                        image_file = open(name, 'wb')
-                        image_file.write(image)
-                        image_file.close()
-                else:
-                    sc.send('Received file is not an accepted image type'.encode('ascii'))
+            
     except KeyboardInterrupt:
         print('\nClosing Server...')
         sock.close()
