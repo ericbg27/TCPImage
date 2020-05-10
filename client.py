@@ -125,10 +125,15 @@ if __name__ == "__main__":
 
     sock.settimeout(10)
 
+    CODES = [1, -1]
     try:
-        msg = sock.recv(128)
-        print(msg.decode('ascii'))
+        msg = sock.recv(32)
+        code = msg.decode('ascii')
+        if int(code) == CODES[0]:
+            print('Image received without errors')
+        elif int(code) == CODES[1]:
+            print('Received file is not an accepted image type')
     except socket.timeout as e:
-        print('Image received without errors.')
+        pass
 
     image.close()

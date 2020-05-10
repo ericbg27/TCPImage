@@ -4,7 +4,7 @@ import imghdr
 import os
 import threading
 from argparse import ArgumentParser
-from _thread import *
+from _thread import start_new_thread
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -69,9 +69,11 @@ def receive_data(sock):
     
     return image, name, command
 
-def server_thread(sc, ids):
+def server_thread(sc, ids, pb_key_size, pem_pb):
     if sc:
         print('Running main thread')
+        sc.send(HEADER.pack(pb_key_size))
+        sc.send(pem_pb)
         encrypted_image, name, command = receive_data(sc)
 
         image_header = pr_key.decrypt(
@@ -85,6 +87,7 @@ def server_thread(sc, ids):
 
         image = image_header + encrypted_image[256:]
         image_type = imghdr.what('', h=image)
+        CODES = [1, -1]
         if image_type:
             if image:
                 n = name.split('.')
@@ -111,8 +114,9 @@ def server_thread(sc, ids):
                 image_file = open(name, 'wb')
                 image_file.write(image)
                 image_file.close()
+                sc.send(str(CODES[0]).encode('ascii'))
         else:
-            sc.send('Received file is not an accepted image type'.encode('ascii'))
+            sc.send(str(CODES[1]).encode('ascii'))
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Transmit an image over TCP')
@@ -188,10 +192,10 @@ if __name__ == "__main__":
         while True:
             sc, sockname = sock.accept()
             print('Accepted connection from', sockname)
-            sc.send(HEADER.pack(pb_key_size))
-            sc.send(pem_pb)
+            #sc.send(HEADER.pack(pb_key_size))
+            #sc.send(pem_pb)
 
-            start_new_thread(server_thread, (sc, ids,))
+            start_new_thread(server_thread, (sc, ids, pb_key_size, pem_pb))
 
             
     except KeyboardInterrupt:
