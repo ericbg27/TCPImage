@@ -69,7 +69,7 @@ def receive_data(sock):
     
     return image, name, command
 
-def server_thread(sc):
+def server_thread(sc, ids):
     if sc:
         print('Running main thread')
         encrypted_image, name, command = receive_data(sc)
@@ -97,6 +97,15 @@ def server_thread(sc):
                 else:
                     n[0] += '_server'
 
+                range_start = 10**4
+                range_end = 10**5 - 1
+
+                im_id = next(iter(set(range(range_start, range_end)) - ids))
+
+                ids.add(im_id)
+
+                n[0] += '_' + str(im_id)
+
                 name = n[0] + '.' + image_type
 
                 image_file = open(name, 'wb')
@@ -122,6 +131,16 @@ if __name__ == "__main__":
         except:
             print("Could not reach specified path, restoring the current path.")
             os.chdir(cwd)
+
+    ids = set()
+
+    for filename in os.listdir(os.getcwd()):
+        names = filename.split('.')
+        if names[-1] == 'jpg' or names[-1] == 'jpeg':
+            names = names[0].split('_')
+            if isinstance(names[-1], int):
+                identifier = names[-1]
+                ids.add(int(identifier))
 
     host = (args.hostname, args.p)
 
@@ -172,7 +191,7 @@ if __name__ == "__main__":
             sc.send(HEADER.pack(pb_key_size))
             sc.send(pem_pb)
 
-            start_new_thread(server_thread, (sc,))
+            start_new_thread(server_thread, (sc, ids,))
 
             
     except KeyboardInterrupt:
