@@ -3,30 +3,15 @@ import struct
 import imghdr
 import os
 import threading
+import ssl
 from argparse import ArgumentParser
 from _thread import start_new_thread
 
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
 from filter_operator import Operator
 #import tqdm
 
 HEADER = struct.Struct('!I')
 NAME_HEADER = struct.Struct('!H')
-
-ENCRYPTION_SIZE = 256
-
-def create_keys():
-    KEY_SIZE = 2048
-    pr_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=KEY_SIZE,
-        backend=default_backend()
-    )
-    pb_key = pr_key.public_key()
-
-    return pr_key, pb_key
 
 def receive_size(sock, short=False):
     blocks = []
@@ -69,23 +54,12 @@ def receive_data(sock):
     
     return image, name, command
 
-def server_thread(sc, ids, pb_key_size, pem_pb):
+def server_thread(sc, ids):
     if sc:
         print('Running main thread')
-        sc.send(HEADER.pack(pb_key_size))
-        sc.send(pem_pb)
-        encrypted_image, name, command = receive_data(sc)
 
-        image_header = pr_key.decrypt(
-            encrypted_image[0:256],
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
+        image, name, command = receive_data(sc)
 
-        image = image_header + encrypted_image[256:]
         image_type = imghdr.what('', h=image)
         CODES = [1, -1]
         if image_type:
@@ -125,6 +99,8 @@ if __name__ == "__main__":
     parser.add_argument('-p', type=int, metavar='port', default=1060,
     help='TCP port number (default: %(default)s)')
     parser.add_argument('-file_dir', default='', help='Directory in which to save received files (absolute path)')
+    parser.add_argument('-a', metavar='cafile', default=None, help='authority: path to CA certificate PEM file')
+    parser.add_argument('-s', metavar='certfile', default=None, help='run as server: path to server PEM file')
 
     args = parser.parse_args()
 
@@ -148,6 +124,12 @@ if __name__ == "__main__":
 
     host = (args.hostname, args.p)
 
+    purpose = ssl.Purpose.CLIENT_AUTH
+    context = ssl.create_default_context(purpose, cafile=args.a)
+    
+    if args.s:
+        context.load_cert_chain(args.s)
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(host)
@@ -156,46 +138,12 @@ if __name__ == "__main__":
     print('Listening at', sock.getsockname())
 
     try:
-        with open('private_key.pem', 'rb') as key_file:
-            pr_key = serialization.load_pem_private_key(
-                key_file.read(),
-                password=None,
-                backend=default_backend()
-            )
-
-        with open('public_key.pem', 'rb') as key_file:
-            pb_key = serialization.load_pem_public_key(
-                key_file.read(),
-                backend=default_backend()
-            )
-    except IOError:
-        pr_key, pb_key = create_keys()
-    finally:
-        pem = pr_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        with open('private_key.pem', 'wb') as f:
-            f.write(pem)
-        
-        pem_pb = pb_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        with open('public_key.pem', 'wb') as f:
-            f.write(pem_pb)
-
-    pb_key_size = len(pem_pb)
-
-    try:
         while True:
             sc, sockname = sock.accept()
             print('Accepted connection from', sockname)
-            #sc.send(HEADER.pack(pb_key_size))
-            #sc.send(pem_pb)
+            ssl_sock = context.wrap_socket(sc, server_side=True)
 
-            start_new_thread(server_thread, (sc, ids, pb_key_size, pem_pb))
+            start_new_thread(server_thread, (ssl_sock, ids))
 
             
     except KeyboardInterrupt:
